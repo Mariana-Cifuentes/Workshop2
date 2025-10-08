@@ -40,6 +40,12 @@ AIRFLOW/
 ├── requirements.txt               # Project dependencies (rapidfuzz, pydrive2, etc.)
 └── .env                           # Local environment variables (connections, keys, etc.)
 ```
+<img width="1558" height="817" alt="image" src="https://github.com/user-attachments/assets/424c4ebc-601a-4eff-8211-c453e8abf44c" />
+
+**Overall Project Flow**
+
+The diagram illustrates the complete ETL process developed in Apache Airflow. Data is extracted from two sources — the Spotify CSV dataset and the Grammy MySQL database — using Pandas. Both datasets are cleaned, standardized, and merged in Python through transformation tasks that include normalization and fuzzy matching of titles and artists.
+The resulting unified dataset is then loaded into two destinations: a **Google Drive** folder (as a transformed CSV file) and a **MySQL Data Warehouse** structured under a star schema. Finally, the data stored in the warehouse is visualized in **Power BI**, where KPIs and analytical dashboards are generated.
 
 ---
 
@@ -147,8 +153,55 @@ Builds and populates the **star schema** in the database connected as `mysql_dw`
 
 ### 4.2 Transformation and Merge (`transform_and_merge`)
 
-(As detailed above.)
+**Spotify Processing:**
 
+* Removes auxiliary column `Unnamed: 0` if present.
+* Drops non-essential columns: `key`, `mode`, `time_signature`, `winner`.
+* Deletes rows containing null or duplicate values (strict enforcement for consistency).
+* Normalizes genres by mapping *sub-genres* to *main buckets* (e.g., `alt-rock → rock`, `deep-house → electronic`, `k-pop → pop`, etc.).
+* Creates `sub_genre` (original) and `main_genre` (mapped). Removes `track_genre`.
+* **Duplicate resolution by `track_id`:** keeps the record with the highest `popularity` and concatenates secondary sub-genres into `sub_genre`.
+* Converts `duration_ms` to *minutes* → `duration_min`.
+* Caps `loudness` at ≤ 0 (fixes anomalous positive values).
+* Standardizes text fields (`artists`, `album_name`, `track_name`) to lowercase and trims whitespace.
+* Consolidates by (`track_name`, `artists`), keeping the most popular entry and aggregating alternate albums into a new column `album_others` to preserve dimensional richness.
+
+**Grammy Dataset (CSV/DB):**
+
+* Removes irrelevant columns for the ETL focus: `winner`, `workers`, `img`, `published_at`, `updated_at`.
+* Normalizes text fields (`title`, `category`, `nominee`, `artist`).
+* Fills empty `nominee` and `artist` values with `"not specified"`.
+
+**Spotify ↔ Grammy Matching:**
+
+* Before merging both sources, key fields are cleaned to ensure accurate comparisons.
+  For artist names, standardized “clean lists” are created by removing accents and special characters, converting all text to lowercase, and replacing connectors like “feat.”, “featuring”, “&”, or commas with a unified separator (`;`).
+  This ensures that collaborations written differently (e.g., “Beyoncé feat. Jay-Z” vs. “Jay Z & Beyoncé”) are treated as equivalent.
+
+* A flag `is_various_artists` is generated to identify Grammy entries corresponding to albums or compilations with multiple performers.
+
+* After normalization, an *initial merge* is performed between Spotify and Grammy datasets using an **outer join** on `track_name` (Spotify) and `nominee` (Grammy).
+  This approach preserves all potential match pairs, even if there are small naming differences.
+
+* A **fuzzy matching** process is then applied using the *RapidFuzz* library to detect approximate text matches:
+
+  * Titles are compared using `token_set_ratio`, which ignores word order and minor typographical variations.
+  * A similarity threshold of **90%** is defined to consider titles equivalent.
+  * For artists:
+
+    * If the Grammy record is marked `is_various_artists=True`, validation only requires the Spotify entry to contain *multiple artists* (representing a group).
+    * Otherwise, the artist lists from both sources are compared, and a match is confirmed if *at least one artist pair* exceeds the 90% similarity threshold.
+
+* When a row satisfies both conditions — title match and artist match — the flag **`grammy_nominee=True`** is assigned, indicating that the Spotify track or album was identified as a Grammy nominee.
+
+* After matching, data types and missing values are standardized to maintain dataset integrity:
+
+  * `explicit` is converted to boolean and filled with `False` by default.
+  * Empty text fields are replaced with `"not specified"`.
+  * Missing numeric values are filled with `0` to prevent issues during star-schema loading.
+
+* Finally, columns are renamed to clearly distinguish their source — for example, `artist_spotify` and `artist_grammy` — and organized in a logical order (Spotify variables first, followed by Grammy and auxiliary fields).
+  The result is a **consolidated CSV file** stored in `OUT_PATH`, serving as the final product of the transformation phase and the foundation for subsequent stages of the ETL pipeline.
 ---
 
 ## 4.3 Load 
@@ -232,7 +285,8 @@ These cards summarize key indicators combining Spotify and Grammy information:
 
 ### KPI 5: Top 10 Most Popular Artists on Spotify
 
-*(Insert chart image here)*
+<img width="1876" height="1022" alt="image" src="https://github.com/user-attachments/assets/afd18d34-87cd-4efa-913c-a60d16d0a6de" />
+
 
 This chart highlights the artist combinations—either solo or collaborative—with the highest average popularity on Spotify.
 As observed, collaborations such as **Sam Smith & Kim Petras**, **Bizarrap & Quevedo**, and **Bad Bunny & Chencho Corleone** approach the maximum popularity score (100).
@@ -243,7 +297,8 @@ Meanwhile, individual performers like **Manuel Turizo**, **Harry Styles**, and *
 
 ### KPI 6: Grammy Nomination Distribution by Category
 
-*(Insert chart image here)*
+<img width="1767" height="805" alt="image" src="https://github.com/user-attachments/assets/a7c14194-0da6-4ef2-a265-911c9979d4ef" />
+
 
 The visualization illustrates how Grammy nominations are distributed across award categories.
 Among them, **“Record of the Year”** stands out with the highest number of nominations, implying that top-performing songs on streaming platforms often compete in general categories with greater exposure.
@@ -254,7 +309,8 @@ Overall, this chart helps pinpoint the most competitive and visible categories i
 
 ### KPI 7: Grammy Nomination Rate (Success vs. Recognition)
 
-*(Insert chart image here)*
+<img width="1790" height="815" alt="image" src="https://github.com/user-attachments/assets/ce77c2e5-6ecf-43e9-9797-5b7258b6adb2" />
+
 
 This figure explores the relationship between Spotify popularity and the rate of Grammy nominations by artist.
 The scatter plot reveals that there is no strong or direct correlation between both variables, partly due to the limited overlap between datasets.
@@ -266,7 +322,8 @@ In this sense, the visual functions as a comparative KPI, outlining broader patt
 
 ### KPI 8: Popularity Comparison (Nominees vs Non-Nominees by Genre)
 
-*(Insert chart image here)*
+<img width="1759" height="800" alt="image" src="https://github.com/user-attachments/assets/99e062e4-32b8-4524-bad8-d0e446283b05" />
+
 
 In this comparison, average Spotify popularity is analyzed between Grammy-nominated and non-nominated tracks, grouped by primary genre.
 Across most categories, nominated songs—represented by dark blue bars—display higher average popularity.
@@ -277,7 +334,8 @@ Taken together, these findings indicate a modest but consistent positive associa
 
 ### KPI 9: Average Energy vs Average Valence (Valid Years) per Year
 
-*(Insert chart image here)*
+<img width="1782" height="801" alt="image" src="https://github.com/user-attachments/assets/0ba90868-8f39-4d18-94f5-a9f8f8b6dfad" />
+
 
 Finally, this time-series chart examines the evolution of songs’ sonic characteristics over the decades.
 A clear shift can be observed:
