@@ -1,0 +1,41 @@
+# --- Sensitive files ---
+credentials.json
+token.json
+dags/data/spotify_grammy_full.csv
+
+# --- Caches and compiled files ---
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.log
+
+# --- Virtual environments ---
+.venv/
+env/
+venv/
+
+# --- Local environment configuration ---
+.env
+
+# --- Airflow data and logs ---
+logs/
+data/
+
+# --- System files ---
+.DS_Store
+Thumbs.db
+
+# --- Jupyter temporary files ---
+.ipynb_checkpoints/
+
+# --- Docker related files ---
+*.pid
+*.sock
+*.log
+docker-compose.override.yml
+
+# --- Other unwanted or temporary files ---
+*.bak
+*.tmp
+*.swp

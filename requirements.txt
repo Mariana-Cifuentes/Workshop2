@@ -1,0 +1,10 @@
+jupyter
+pandas
+matplotlib
+seaborn
+mysql-connector-python
+unidecode
+fuzzywuzzy[speedup]
+google-api-python-client
+google-auth-httplib2
+google-auth-oauthlib
