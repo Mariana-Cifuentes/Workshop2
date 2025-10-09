@@ -1,7 +1,7 @@
 # --- Sensitive files ---
 credentials.json
 token.json
-dags/data/spotify_grammy_full.csv
+dags/data/
 
 # --- Caches and compiled files ---
 __pycache__/
@@ -20,7 +20,6 @@ venv/
 
 # --- Airflow data and logs ---
 logs/
-data/
 
 # --- System files ---
 .DS_Store
